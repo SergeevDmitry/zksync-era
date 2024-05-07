@@ -38,6 +38,7 @@ use zksync_prover_fri_types::{
             ZkSyncRecursionLayerProof, ZkSyncRecursionLayerStorageType,
             ZkSyncRecursionLayerVerificationKey,
         },
+        snark_wrapper::franklin_crypto::bellman::kate_commitment::{Crs, CrsForMonomialForm},
         zkevm_circuits::scheduler::block_header::BlockAuxilaryOutputWitness,
     },
     get_current_pod_name, AuxOutputWitnessWrapper, FriProofWrapper,
@@ -55,6 +56,7 @@ pub struct ProofCompressor {
     compression_mode: u8,
     verify_wrapper_proof: bool,
     max_attempts: u32,
+    trusted_setup: Crs<Bn256, CrsForMonomialForm>,
 }
 
 impl ProofCompressor {
@@ -65,12 +67,14 @@ impl ProofCompressor {
         verify_wrapper_proof: bool,
         max_attempts: u32,
     ) -> Self {
+        let trusted_setup = get_trusted_setup();
         Self {
             blob_store,
             pool,
             compression_mode,
             verify_wrapper_proof,
             max_attempts,
+            trusted_setup,
         }
     }
 
@@ -117,8 +121,9 @@ impl ProofCompressor {
     // }
 
     pub fn compress_proof(
+        trusted_setup: &Crs<Bn256, CrsForMonomialForm>,
         proof: ZkSyncRecursionLayerProof,
-        compression_mode: u8,
+        _compression_mode: u8,
         verify_wrapper_proof: bool,
     ) -> anyhow::Result<FinalProof> {
         let keystore = Keystore::default();
@@ -130,16 +135,15 @@ impl ProofCompressor {
 
         #[cfg(feature = "gpu")]
         let wrapper_proof = {
-            let crs = get_trusted_setup();
             let wrapper_config = DEFAULT_WRAPPER_CONFIG;
-            let mut prover = WrapperProver::<GPUWrapperConfigs>::new(&crs, wrapper_config).unwrap();
-
-            prover
+            let mut wrapper_prover =
+                WrapperProver::<GPUWrapperConfigs>::new(trusted_setup, wrapper_config).unwrap();
+            wrapper_prover
                 .generate_setup_data(scheduler_vk.into_inner())
                 .unwrap();
-            prover.generate_proofs(proof.into_inner()).unwrap();
+            wrapper_prover.generate_proofs(proof.into_inner()).unwrap();
 
-            prover.get_wrapper_proof().unwrap()
+            wrapper_prover.get_wrapper_proof().unwrap()
         };
         #[cfg(not(feature = "gpu"))]
         let wrapper_proof = Self::get_wrapper_proof(proof, scheduler_vk, compression_mode);
@@ -239,7 +243,12 @@ impl JobProcessor for ProofCompressor {
         let block_number = *job_id;
         tokio::task::spawn_blocking(move || {
             let _span = tracing::info_span!("compress", %block_number).entered();
-            Self::compress_proof(job, compression_mode, verify_wrapper_proof)
+            Self::compress_proof(
+                &self.trusted_setup,
+                job,
+                compression_mode,
+                verify_wrapper_proof,
+            )
         })
     }
 
