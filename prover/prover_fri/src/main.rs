@@ -18,11 +18,11 @@ use zksync_env_config::{
     FromEnv,
 };
 use zksync_object_store::{ObjectStore, ObjectStoreFactory};
-use zksync_prover_fri_utils::{get_all_circuit_id_round_tuples_for, region_fetcher::get_zone};
+use zksync_prover_fri_utils::{get_all_circuit_id_round_tuples_for};
 use zksync_queued_job_processor::JobProcessor;
 use zksync_types::{
     basic_fri_types::CircuitIdRoundTuple,
-    prover_dal::{GpuProverInstanceStatus, SocketAddress},
+    prover_dal::{GpuProverInstanceStatus},
 };
 use zksync_utils::wait_for_tasks::ManagedTasks;
 
@@ -230,9 +230,10 @@ async fn get_prover_tasks(
     let shared_witness_vector_queue = Arc::new(Mutex::new(witness_vector_queue));
     let consumer = shared_witness_vector_queue.clone();
 
-    let zone = get_zone(&prover_config.zone_read_url)
-        .await
-        .context("get_zone()")?;
+    // let zone = get_zone(&prover_config.zone_read_url)
+    //     .await
+    //     .context("get_zone()")?;
+    let zone = "general";
     let local_ip = local_ip().context("Failed obtaining local IP address")?;
     let address = SocketAddress {
         host: local_ip,
@@ -247,24 +248,45 @@ async fn get_prover_tasks(
         circuit_ids_for_round_to_be_proven.clone(),
         consumer,
         address.clone(),
-        zone.clone(),
+        zone.to_string(),
     );
     let producer = shared_witness_vector_queue.clone();
 
     tracing::info!(
         "local IP address is: {:?} in zone: {}",
         local_ip,
-        zone.clone()
+        zone.to_string()
     );
     let socket_listener = gpu_socket_listener::SocketListener::new(
         address,
         producer,
         pool.clone(),
         prover_config.specialized_group_id,
-        zone,
+        zone.to_string(),
     );
-    Ok(vec![
-        tokio::spawn(socket_listener.listen_incoming_connections(stop_receiver.clone())),
-        tokio::spawn(prover.run(stop_receiver, None)),
-    ])
+
+    let mut tasks = vec![
+        tokio::spawn(
+            socket_listener
+                .listen_incoming_connections(stop_receiver.clone(), init_notifier.clone()),
+        ),
+        tokio::spawn(prover.run(stop_receiver.clone(), None)),
+    ];
+
+    // TODO(PLA-874): remove the check after making the availability checker required
+    if let Some(check_interval) = prover_config.availability_check_interval_in_secs {
+        let availability_checker =
+            gpu_prover_availability_checker::availability_checker::AvailabilityChecker::new(
+                address,
+                zone.to_string(),
+                check_interval,
+                pool,
+            );
+
+        tasks.push(tokio::spawn(
+            availability_checker.run(stop_receiver.clone(), init_notifier),
+        ));
+    }
+
+    Ok(tasks)
 }
