@@ -21,6 +21,8 @@ jobs:
           echo IN_DOCKER=1 >> .env
 
       - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           touch ./test.txt
           git add ./test.txt
