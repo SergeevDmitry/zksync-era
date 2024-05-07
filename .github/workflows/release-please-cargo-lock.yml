@@ -24,6 +24,5 @@ jobs:
         run: |
           touch ./test.txt
           git add ./test.txt
-#          git add ./Cargo.lock
           git commit -m "Update Cargo.lock"
           git push
