@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, RwLock},
+    sync::{Arc, Mutex, RwLock},
     time::Instant,
 };
 
@@ -59,7 +59,7 @@ pub struct ProofCompressor {
     compression_mode: u8,
     verify_wrapper_proof: bool,
     max_attempts: u32,
-    wrapper_prover: Arc<RwLock<WrapperProver<GPUWrapperConfigs>>>,
+    wrapper_prover: Arc<Mutex<WrapperProver<GPUWrapperConfigs>>>,
 }
 
 impl ProofCompressor {
@@ -72,7 +72,7 @@ impl ProofCompressor {
     ) -> Self {
         let trusted_setup = get_trusted_setup();
         let wrapper_config = DEFAULT_WRAPPER_CONFIG;
-        let wrapper_prover = Arc::new(RwLock::new(
+        let wrapper_prover = Arc::new(Mutex::new(
             WrapperProver::<GPUWrapperConfigs>::new(&*trusted_setup, wrapper_config).unwrap(),
         ));
 
@@ -129,7 +129,7 @@ impl ProofCompressor {
     // }
 
     pub fn compress_proof(
-        wrapper_prover: Arc<RwLock<WrapperProver<GPUWrapperConfigs>>>,
+        wrapper_prover: Arc<Mutex<WrapperProver<GPUWrapperConfigs>>>,
         proof: ZkSyncRecursionLayerProof,
         _compression_mode: u8,
         verify_wrapper_proof: bool,
@@ -143,7 +143,7 @@ impl ProofCompressor {
 
         #[cfg(feature = "gpu")]
         let wrapper_proof = {
-            let mut wrapper_prover = *(wrapper_prover.write().unwrap());
+            let mut wrapper_prover = *(wrapper_prover.lock().unwrap());
             wrapper_prover
                 .generate_setup_data(scheduler_vk.into_inner())
                 .unwrap();
