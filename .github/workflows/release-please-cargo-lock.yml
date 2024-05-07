@@ -20,13 +20,6 @@ jobs:
           echo $(pwd)/bin >> $GITHUB_PATH
           echo IN_DOCKER=1 >> .env
 
-#      - name: Start services
-#        run: |
-#          docker compose up -d zk
-#
-#      - name: Cargo check
-#        run: ci_run cargo check
-
       - name: Push changes
         run: |
           touch ./test.txt
