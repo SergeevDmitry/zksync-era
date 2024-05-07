@@ -124,10 +124,6 @@ impl ProofCompressor {
         scheduler_vk: ZkSyncRecursionLayerVerificationKey,
         compression_mode: u8,
     ) -> SnarkProof<Bn256, ZkSyncSnarkWrapperCircuit> {
-        let config = WrapperConfig::new(compression_mode);
-
-        let (wrapper_proof, _) = wrap_proof(proof, scheduler_vk, config);
-        wrapper_proof.into_inner()
     }
 
     // #[cfg(feature = "gpu")]
@@ -160,7 +156,12 @@ impl ProofCompressor {
             wrapper_prover.get_wrapper_proof().unwrap()
         };
         #[cfg(not(feature = "gpu"))]
-        let wrapper_proof = Self::get_wrapper_proof(proof, scheduler_vk, compression_mode);
+        let wrapper_proof = {
+            let config = WrapperConfig::new(_compression_mode);
+
+            let (wrapper_proof, _) = wrap_proof(proof, scheduler_vk, config);
+            wrapper_proof.into_inner()
+        };
 
         // (Re)serialization should always succeed.
         let serialized = bincode::serialize(&wrapper_proof)

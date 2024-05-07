@@ -18,6 +18,7 @@ use crate::{
 };
 
 mod compressor;
+mod gpu_compressor;
 mod initial_setup_keys;
 mod metrics;
 

@@ -16,9 +16,9 @@ will pull jobs from the database and do their part of the pipeline, loading inte
 
 ```mermaid
 flowchart LR
-    A["Operator"] --> |Produces block| F[Prover Gateway]
-    F --> |Inserts into DB| B["Postgres DB"]
-    B --> |Retrieves proven block \nafter compression| F
+    A["Operator"] -->|Produces block| F[Prover Gateway]
+    F -->|Inserts into DB| B["Postgres DB"]
+    B -->|Retrieves proven block \nafter compression| F
     B --> C["Witness"]
     C --- C1["Basic Circuits"]
     C --- C2["Leaf Aggregation"]
@@ -27,9 +27,9 @@ flowchart LR
     C --- C5["Scheduler"]
     C --> B
     B --> D["Vector Generator/Prover"]
-    D --> |Proven Block| B
+    D -->|Proven Block| B
     B --> G["Compressor"]
-    G --> |Compressed block| B
+    G -->|Compressed block| B
 ```
 
 ## Prerequisites
@@ -166,6 +166,39 @@ Machine specs:
    ```console
    zk f cargo run --release --bin zksync_proof_fri_compressor
    ```
+
+## Running the GPU compressor
+
+There is also an option to run the GPU proof compressor, which will significantly improve the performance.
+For that you need the same setup of machine as you have for GPU provers. Then, follow these steps:
+
+1. Compile `era-bellman-cuda` library.
+
+```shell
+git clone https://github.com/matter-labs/bellman-cuda.git --branch dev bellman-cuda; fi
+cmake -Bbellman-cuda/build -Sbellman-cuda/ -DCMAKE_BUILD_TYPE=Release
+cmake --build bellman-cuda/build/
+```
+
+2. Set `BELLMAN_CUDA_DIR` env variable.
+
+```shell
+export BELLMAN_CUDA_DIR=$PWD/bellman-cuda
+```
+
+3. GPU compressor uses `setup_2^24.key`, while the CPU one is using `setup_2^26.key`. So, you need to download the key
+   using:
+
+```shell
+wget https://storage.googleapis.com/matterlabs-setup-keys-us/setup-keys/setup_2^24.key
+```
+
+4. SET `CRS_FILE` with path of the key. Also update paths in configs.
+5. Run the compressor with
+
+```shell
+zk f cargo run --features "gpu" --release --bin zksync_proof_fri_compressor
+```
 
 ## Checking the status of the prover
 
