@@ -20,15 +20,17 @@ jobs:
           echo $(pwd)/bin >> $GITHUB_PATH
           echo IN_DOCKER=1 >> .env
 
-      - name: Start services
-        run: |
-          docker compose up -d zk
-
-      - name: Cargo check
-        run: ci_run cargo check
+#      - name: Start services
+#        run: |
+#          docker compose up -d zk
+#
+#      - name: Cargo check
+#        run: ci_run cargo check
 
       - name: Push changes
-        run:
-          git add ./Cargo.lock
+        run: |
+          touch ./test.txt
+          git add ./test.txt
+#          git add ./Cargo.lock
           git commit -m "Update Cargo.lock"
           git push
