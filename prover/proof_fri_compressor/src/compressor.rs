@@ -73,7 +73,7 @@ impl ProofCompressor {
         let trusted_setup = get_trusted_setup();
         let wrapper_config = DEFAULT_WRAPPER_CONFIG;
         let wrapper_prover = Arc::new(Mutex::new(
-            WrapperProver::<GPUWrapperConfigs>::new(&*trusted_setup, wrapper_config).unwrap(),
+            WrapperProver::<GPUWrapperConfigs>::new(&trusted_setup, wrapper_config).unwrap(),
         ));
 
         Self {
