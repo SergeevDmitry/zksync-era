@@ -81,7 +81,7 @@ impl ProofCompressor {
             .load_recursive_layer_verification_key(
                 ZkSyncRecursionLayerStorageType::SchedulerCircuit as u8,
             )
-            .context("get_recursiver_layer_vk_for_circuit_type()")?;
+            .unwrap();
 
         wrapper_prover
             .generate_setup_data(scheduler_vk.into_inner())
