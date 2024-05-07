@@ -56,7 +56,7 @@ pub struct ProofCompressor {
     compression_mode: u8,
     verify_wrapper_proof: bool,
     max_attempts: u32,
-    trusted_setup: Crs<Bn256, CrsForMonomialForm>,
+    trusted_setup: Arc<Crs<Bn256, CrsForMonomialForm>>,
 }
 
 impl ProofCompressor {
@@ -74,7 +74,7 @@ impl ProofCompressor {
             compression_mode,
             verify_wrapper_proof,
             max_attempts,
-            trusted_setup,
+            trusted_setup: Arc::new(trusted_setup),
         }
     }
 
@@ -121,7 +121,7 @@ impl ProofCompressor {
     // }
 
     pub fn compress_proof(
-        trusted_setup: &Crs<Bn256, CrsForMonomialForm>,
+        trusted_setup: Arc<Crs<Bn256, CrsForMonomialForm>>,
         proof: ZkSyncRecursionLayerProof,
         _compression_mode: u8,
         verify_wrapper_proof: bool,
@@ -136,8 +136,9 @@ impl ProofCompressor {
         #[cfg(feature = "gpu")]
         let wrapper_proof = {
             let wrapper_config = DEFAULT_WRAPPER_CONFIG;
+            let setup_data = trusted_setup;
             let mut wrapper_prover =
-                WrapperProver::<GPUWrapperConfigs>::new(trusted_setup, wrapper_config).unwrap();
+                WrapperProver::<GPUWrapperConfigs>::new(&*trusted_setup, wrapper_config).unwrap();
             wrapper_prover
                 .generate_setup_data(scheduler_vk.into_inner())
                 .unwrap();
@@ -240,15 +241,11 @@ impl JobProcessor for ProofCompressor {
     ) -> JoinHandle<anyhow::Result<Self::JobArtifacts>> {
         let compression_mode = self.compression_mode;
         let verify_wrapper_proof = self.verify_wrapper_proof;
+        let trusted_setup = self.trusted_setup.clone();
         let block_number = *job_id;
         tokio::task::spawn_blocking(move || {
             let _span = tracing::info_span!("compress", %block_number).entered();
-            Self::compress_proof(
-                &self.trusted_setup,
-                job,
-                compression_mode,
-                verify_wrapper_proof,
-            )
+            Self::compress_proof(trusted_setup, job, compression_mode, verify_wrapper_proof)
         })
     }
 
