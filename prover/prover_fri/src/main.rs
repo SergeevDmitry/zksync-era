@@ -22,7 +22,7 @@ use zksync_prover_fri_utils::{get_all_circuit_id_round_tuples_for};
 use zksync_queued_job_processor::JobProcessor;
 use zksync_types::{
     basic_fri_types::CircuitIdRoundTuple,
-    prover_dal::{GpuProverInstanceStatus},
+    prover_dal::{GpuProverInstanceStatus, SocketAddress},
 };
 use zksync_utils::wait_for_tasks::ManagedTasks;
 
@@ -43,7 +43,7 @@ async fn graceful_shutdown(port: u16) -> anyhow::Result<impl Future<Output = ()>
     //     .context("FriProverConfig::from_env()")?
     //     .zone_read_url;
     // let zone = get_zone(zone_url).await.context("get_zone()")?;
-    // let address = SocketAddress { host, port };
+    let address = SocketAddress { host, port };
     let zone = "general";
     Ok(async move {
         pool.connection()
