@@ -143,7 +143,7 @@ impl ProofCompressor {
 
         #[cfg(feature = "gpu")]
         let wrapper_proof = {
-            let mut wrapper_prover = *(wrapper_prover.lock().unwrap());
+            let mut wrapper_prover = wrapper_prover.lock().unwrap();
             wrapper_prover
                 .generate_setup_data(scheduler_vk.into_inner())
                 .unwrap();
