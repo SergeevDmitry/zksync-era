@@ -40,17 +40,18 @@ async fn graceful_shutdown(port: u16) -> anyhow::Result<impl Future<Output = ()>
         .await
         .context("failed to build a connection pool")?;
     let host = local_ip().context("Failed obtaining local IP address")?;
-    let zone_url = &FriProverConfig::from_env()
-        .context("FriProverConfig::from_env()")?
-        .zone_read_url;
-    let zone = get_zone(zone_url).await.context("get_zone()")?;
-    let address = SocketAddress { host, port };
+    // let zone_url = &FriProverConfig::from_env()
+    //     .context("FriProverConfig::from_env()")?
+    //     .zone_read_url;
+    // let zone = get_zone(zone_url).await.context("get_zone()")?;
+    // let address = SocketAddress { host, port };
+    let zone = "general";
     Ok(async move {
         pool.connection()
             .await
             .unwrap()
             .fri_gpu_prover_queue_dal()
-            .update_prover_instance_status(address, GpuProverInstanceStatus::Dead, zone)
+            .update_prover_instance_status(address, GpuProverInstanceStatus::Dead, zone.to_string())
             .await
     })
 }
