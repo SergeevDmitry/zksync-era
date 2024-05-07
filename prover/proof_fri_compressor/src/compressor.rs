@@ -136,7 +136,6 @@ impl ProofCompressor {
         #[cfg(feature = "gpu")]
         let wrapper_proof = {
             let wrapper_config = DEFAULT_WRAPPER_CONFIG;
-            let setup_data = trusted_setup;
             let mut wrapper_prover =
                 WrapperProver::<GPUWrapperConfigs>::new(&*trusted_setup, wrapper_config).unwrap();
             wrapper_prover
