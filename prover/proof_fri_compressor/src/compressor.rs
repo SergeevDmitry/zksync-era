@@ -72,9 +72,8 @@ impl ProofCompressor {
     ) -> Self {
         let trusted_setup = get_trusted_setup();
         let wrapper_config = DEFAULT_WRAPPER_CONFIG;
-        let wrapper_prover = Arc::new(Mutex::new(
-            WrapperProver::<GPUWrapperConfigs>::new(&trusted_setup, wrapper_config).unwrap(),
-        ));
+        let mut wrapper_prover =
+            WrapperProver::<GPUWrapperConfigs>::new(&trusted_setup, wrapper_config).unwrap();
 
         let keystore = Keystore::default();
         let scheduler_vk = keystore
@@ -93,7 +92,7 @@ impl ProofCompressor {
             compression_mode,
             verify_wrapper_proof,
             max_attempts,
-            wrapper_prover,
+            wrapper_prover: Arc::new(Mutex::new(wrapper_prover)),
         }
     }
 
