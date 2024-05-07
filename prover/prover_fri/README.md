@@ -169,8 +169,8 @@ Machine specs:
 
 ## Running the GPU compressor
 
-There is also an option to run the GPU proof compressor, which will significantly improve the performance.
-For that you need the same setup of machine as you have for GPU provers. Then, follow these steps:
+There is also an option to run the GPU proof compressor, which will significantly improve the performance. For that you
+need the same setup of machine as you have for GPU provers. Then, follow these steps:
 
 1. Compile `era-bellman-cuda` library.
 

@@ -72,10 +72,18 @@ async fn main() -> anyhow::Result<()> {
     let blob_store = ObjectStoreFactory::new(object_store_config.0)
         .create_store()
         .await;
+    #[cfg(not(feature = "gpu"))]
     let proof_compressor = ProofCompressor::new(
         blob_store,
         pool,
         config.compression_mode,
+        config.verify_wrapper_proof,
+        config.max_attempts,
+    );
+    #[cfg(feature = "gpu")]
+    let proof_compressor = gpu_compressor::gpu_compressor::ProofCompressor::new(
+        blob_store,
+        pool,
         config.verify_wrapper_proof,
         config.max_attempts,
     );

@@ -8,40 +8,24 @@ use async_trait::async_trait;
 use circuit_sequencer_api::proof::FinalProof;
 use prover_dal::{ConnectionPool, Prover, ProverDal};
 use tokio::task::JoinHandle;
-#[cfg(feature = "gpu")]
-use wrapper_prover::{
-    Bn256, GPUWrapperConfigs, Proof as SnarkProof, WrapperProver, ZkSyncSnarkWrapperCircuit,
-    DEFAULT_WRAPPER_CONFIG,
-};
-#[cfg(not(feature = "gpu"))]
-use zkevm_test_harness::proof_wrapper_utils::WrapperConfig;
-#[allow(unused_imports)]
-use zkevm_test_harness::proof_wrapper_utils::{get_trusted_setup, wrap_proof};
-#[cfg(not(feature = "gpu"))]
-use zkevm_test_harness_1_3_3::bellman::bn256::Bn256;
+use zkevm_test_harness::proof_wrapper_utils::{wrap_proof, WrapperConfig};
 use zkevm_test_harness_1_3_3::{
     abstract_zksync_circuit::concrete_circuits::{
         ZkSyncCircuit, ZkSyncProof, ZkSyncVerificationKey,
     },
-    bellman::plonk::better_better_cs::{
-        proof::Proof, setup::VerificationKey as SnarkVerificationKey,
+    bellman::{
+        bn256::Bn256,
+        plonk::better_better_cs::{proof::Proof, setup::VerificationKey as SnarkVerificationKey},
     },
     witness::oracle::VmWitnessOracle,
 };
 use zksync_object_store::ObjectStore;
-#[cfg(not(feature = "gpu"))]
-use zksync_prover_fri_types::circuit_definitions::{
-    circuit_definitions::aux_layer::ZkSyncSnarkWrapperCircuit,
-    snark_wrapper::franklin_crypto::bellman::plonk::better_better_cs::proof::Proof as SnarkProof,
-};
 use zksync_prover_fri_types::{
     circuit_definitions::{
         boojum::field::goldilocks::GoldilocksField,
         circuit_definitions::recursion_layer::{
             ZkSyncRecursionLayerProof, ZkSyncRecursionLayerStorageType,
-            ZkSyncRecursionLayerVerificationKey,
         },
-        snark_wrapper::franklin_crypto::bellman::kate_commitment::{Crs, CrsForMonomialForm},
         zkevm_circuits::scheduler::block_header::BlockAuxilaryOutputWitness,
     },
     get_current_pod_name, AuxOutputWitnessWrapper, FriProofWrapper,
@@ -59,7 +43,6 @@ pub struct ProofCompressor {
     compression_mode: u8,
     verify_wrapper_proof: bool,
     max_attempts: u32,
-    wrapper_prover: Arc<Mutex<WrapperProver<GPUWrapperConfigs>>>,
 }
 
 impl ProofCompressor {
@@ -70,29 +53,12 @@ impl ProofCompressor {
         verify_wrapper_proof: bool,
         max_attempts: u32,
     ) -> Self {
-        let trusted_setup = get_trusted_setup();
-        let wrapper_config = DEFAULT_WRAPPER_CONFIG;
-        let mut wrapper_prover =
-            WrapperProver::<GPUWrapperConfigs>::new(&trusted_setup, wrapper_config).unwrap();
-
-        let keystore = Keystore::default();
-        let scheduler_vk = keystore
-            .load_recursive_layer_verification_key(
-                ZkSyncRecursionLayerStorageType::SchedulerCircuit as u8,
-            )
-            .unwrap();
-
-        wrapper_prover
-            .generate_setup_data(scheduler_vk.into_inner())
-            .unwrap();
-
         Self {
             blob_store,
             pool,
             compression_mode,
             verify_wrapper_proof,
             max_attempts,
-            wrapper_prover: Arc::new(Mutex::new(wrapper_prover)),
         }
     }
 
@@ -118,26 +84,9 @@ impl ProofCompressor {
         Ok(())
     }
 
-    #[cfg(not(feature = "gpu"))]
-    fn get_wrapper_proof(
-        proof: ZkSyncRecursionLayerProof,
-        scheduler_vk: ZkSyncRecursionLayerVerificationKey,
-        compression_mode: u8,
-    ) -> SnarkProof<Bn256, ZkSyncSnarkWrapperCircuit> {
-    }
-
-    // #[cfg(feature = "gpu")]
-    // fn get_wrapper_proof(
-    //     proof: ZkSyncRecursionLayerProof,
-    //     scheduler_vk: ZkSyncRecursionLayerVerificationKey,
-    //     _compression_mode: u8,
-    // ) -> SnarkProof<Bn256, ZkSyncSnarkWrapperCircuit> {
-    // }
-
     pub fn compress_proof(
-        wrapper_prover: Arc<Mutex<WrapperProver<GPUWrapperConfigs>>>,
         proof: ZkSyncRecursionLayerProof,
-        _compression_mode: u8,
+        compression_mode: u8,
         verify_wrapper_proof: bool,
     ) -> anyhow::Result<FinalProof> {
         let keystore = Keystore::default();
@@ -147,17 +96,8 @@ impl ProofCompressor {
             )
             .context("get_recursiver_layer_vk_for_circuit_type()")?;
 
-        #[cfg(feature = "gpu")]
         let wrapper_proof = {
-            let mut wrapper_prover = wrapper_prover.lock().unwrap();
-
-            wrapper_prover.generate_proofs(proof.into_inner()).unwrap();
-
-            wrapper_prover.get_wrapper_proof().unwrap()
-        };
-        #[cfg(not(feature = "gpu"))]
-        let wrapper_proof = {
-            let config = WrapperConfig::new(_compression_mode);
+            let config = WrapperConfig::new(compression_mode);
 
             let (wrapper_proof, _) = wrap_proof(proof, scheduler_vk, config);
             wrapper_proof.into_inner()
@@ -255,11 +195,10 @@ impl JobProcessor for ProofCompressor {
     ) -> JoinHandle<anyhow::Result<Self::JobArtifacts>> {
         let compression_mode = self.compression_mode;
         let verify_wrapper_proof = self.verify_wrapper_proof;
-        let wrapper_prover = self.wrapper_prover.clone();
         let block_number = *job_id;
         tokio::task::spawn_blocking(move || {
             let _span = tracing::info_span!("compress", %block_number).entered();
-            Self::compress_proof(wrapper_prover, job, compression_mode, verify_wrapper_proof)
+            Self::compress_proof(job, compression_mode, verify_wrapper_proof)
         })
     }
 

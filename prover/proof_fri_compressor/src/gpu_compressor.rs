@@ -15,7 +15,6 @@ pub mod gpu_compressor {
         DEFAULT_WRAPPER_CONFIG,
     };
     use zkevm_test_harness::proof_wrapper_utils::get_trusted_setup;
-
     use zkevm_test_harness_1_3_3::{
         abstract_zksync_circuit::concrete_circuits::{
             ZkSyncCircuit, ZkSyncProof, ZkSyncVerificationKey,
@@ -26,7 +25,6 @@ pub mod gpu_compressor {
         witness::oracle::VmWitnessOracle,
     };
     use zksync_object_store::ObjectStore;
-
     use zksync_prover_fri_types::{
         circuit_definitions::{
             boojum::field::goldilocks::GoldilocksField,
@@ -58,7 +56,6 @@ pub mod gpu_compressor {
         pub fn new(
             blob_store: Arc<dyn ObjectStore>,
             pool: ConnectionPool<Prover>,
-            compression_mode: u8,
             verify_wrapper_proof: bool,
             max_attempts: u32,
         ) -> Self {
@@ -81,7 +78,6 @@ pub mod gpu_compressor {
             Self {
                 blob_store,
                 pool,
-                compression_mode,
                 verify_wrapper_proof,
                 max_attempts,
                 wrapper_prover: Arc::new(Mutex::new(wrapper_prover)),
@@ -129,6 +125,7 @@ pub mod gpu_compressor {
             if verify_wrapper_proof {
                 // If we want to verify the proof, we have to deserialize it, with proper type.
                 // So that we can pass it into `from_proof_and_numeric_type` method below.
+                let keystore = Keystore::default();
                 Self::verify_proof(keystore, serialized.clone())?;
             }
 
