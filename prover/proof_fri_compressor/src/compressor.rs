@@ -76,6 +76,17 @@ impl ProofCompressor {
             WrapperProver::<GPUWrapperConfigs>::new(&trusted_setup, wrapper_config).unwrap(),
         ));
 
+        let keystore = Keystore::default();
+        let scheduler_vk = keystore
+            .load_recursive_layer_verification_key(
+                ZkSyncRecursionLayerStorageType::SchedulerCircuit as u8,
+            )
+            .context("get_recursiver_layer_vk_for_circuit_type()")?;
+
+        wrapper_prover
+            .generate_setup_data(scheduler_vk.into_inner())
+            .unwrap();
+
         Self {
             blob_store,
             pool,
@@ -144,9 +155,7 @@ impl ProofCompressor {
         #[cfg(feature = "gpu")]
         let wrapper_proof = {
             let mut wrapper_prover = wrapper_prover.lock().unwrap();
-            wrapper_prover
-                .generate_setup_data(scheduler_vk.into_inner())
-                .unwrap();
+
             wrapper_prover.generate_proofs(proof.into_inner()).unwrap();
 
             wrapper_prover.get_wrapper_proof().unwrap()
