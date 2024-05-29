@@ -24,6 +24,7 @@ use zksync_core::{
     Component, Components,
 };
 use zksync_env_config::FromEnv;
+use zksync_eth_client::clients::QueryClient;
 use zksync_storage::RocksDB;
 use zksync_utils::wait_for_tasks::ManagedTasks;
 
@@ -38,9 +39,6 @@ struct Cli {
     /// Generate genesis block for the first contract deployment using temporary DB.
     #[arg(long)]
     genesis: bool,
-    /// Set chain id (temporary will be moved to genesis config)
-    #[arg(long)]
-    set_chain_id: bool,
     /// Rebuild tree.
     #[arg(long)]
     rebuild_tree: bool,
@@ -180,23 +178,23 @@ async fn main() -> anyhow::Result<()> {
         genesis_init(genesis.clone(), &postgres_config)
             .await
             .context("genesis_init")?;
-        if opt.genesis {
-            return Ok(());
-        }
-    }
 
-    if opt.set_chain_id {
-        let eth_client = configs.eth.as_ref().context("eth config")?;
-
-        if let Some(shared_bridge) = &genesis.shared_bridge {
+        if let Some(ecosystem_contracts) = &contracts_config.ecosystem_contracts {
+            let eth_config = configs.eth.as_ref().context("eth config")?;
+            let query_client =
+                QueryClient::new(eth_config.web3_url.clone()).context("Ethereum client")?;
             genesis::save_set_chain_id_tx(
-                &eth_client.web3_url,
+                &query_client,
                 contracts_config.diamond_proxy_addr,
-                shared_bridge.state_transition_proxy_addr,
+                ecosystem_contracts.state_transition_proxy_addr,
                 &postgres_config,
             )
             .await
             .context("Failed to save SetChainId upgrade transaction")?;
+        }
+
+        if opt.genesis {
+            return Ok(());
         }
     }
 

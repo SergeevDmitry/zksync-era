@@ -16,7 +16,7 @@ use zksync_core::state_keeper::{
 use crate::{
     implementations::resources::{
         fee_input::FeeInputResource,
-        pools::MasterPoolResource,
+        pools::{MasterPool, PoolResource},
         state_keeper::{ConditionalSealerResource, OutputHandlerResource, StateKeeperIOResource},
     },
     resource::Unique,
@@ -53,7 +53,7 @@ impl MempoolIOLayer {
 
     async fn build_mempool_guard(
         &self,
-        master_pool: &MasterPoolResource,
+        master_pool: &PoolResource<MasterPool>,
     ) -> anyhow::Result<MempoolGuard> {
         let connection_pool = master_pool
             .get_singleton()
@@ -78,7 +78,7 @@ impl WiringLayer for MempoolIOLayer {
     async fn wire(self: Box<Self>, mut context: ServiceContext<'_>) -> Result<(), WiringError> {
         // Fetch required resources.
         let batch_fee_input_provider = context.get_resource::<FeeInputResource>().await?.0;
-        let master_pool = context.get_resource::<MasterPoolResource>().await?;
+        let master_pool = context.get_resource::<PoolResource<MasterPool>>().await?;
 
         // Create miniblock sealer task.
         let (persistence, l2_block_sealer) = StateKeeperPersistence::new(
@@ -86,7 +86,7 @@ impl WiringLayer for MempoolIOLayer {
                 .get_singleton()
                 .await
                 .context("Get master pool")?,
-            self.contracts_config.l2_erc20_bridge_addr,
+            self.contracts_config.l2_shared_bridge_addr.unwrap(),
             self.state_keeper_config.l2_block_seal_queue_capacity,
         );
         let output_handler = OutputHandler::new(Box::new(persistence));

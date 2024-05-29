@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::fmt;
 
 use zksync_contracts::verifier_contract;
 pub(super) use zksync_eth_client::Error as EthClientError;
@@ -38,28 +38,34 @@ const TOO_MANY_RESULTS_ALCHEMY: &str = "response size exceeded";
 /// Implementation of [`EthClient`] based on HTTP JSON-RPC (encapsulated via [`EthInterface`]).
 #[derive(Debug)]
 pub struct EthHttpQueryClient {
-    client: Arc<dyn EthInterface>,
+    client: Box<dyn EthInterface>,
     topics: Vec<H256>,
-    zksync_contract_addr: Address,
+    diamond_proxy_addr: Address,
     governance_address: Address,
+    // Only present for post-shared bridge chains.
+    state_transition_manager_address: Option<Address>,
     verifier_contract_abi: Contract,
     confirmations_for_eth_event: Option<u64>,
 }
 
 impl EthHttpQueryClient {
     pub fn new(
-        client: Arc<dyn EthInterface>,
-        zksync_contract_addr: Address,
+        client: Box<dyn EthInterface>,
+        diamond_proxy_addr: Address,
+        state_transition_manager_address: Option<Address>,
         governance_address: Address,
         confirmations_for_eth_event: Option<u64>,
     ) -> Self {
         tracing::debug!(
-            "New eth client, zkSync addr: {zksync_contract_addr:x}, governance addr: {governance_address:?}"
+            "New eth client, zkSync addr: {:x}, governance addr: {:?}",
+            diamond_proxy_addr,
+            governance_address
         );
         Self {
-            client,
+            client: client.for_component("watch"),
             topics: Vec::new(),
-            zksync_contract_addr,
+            diamond_proxy_addr,
+            state_transition_manager_address,
             governance_address,
             verifier_contract_abi: verifier_contract(),
             confirmations_for_eth_event,
@@ -73,12 +79,21 @@ impl EthHttpQueryClient {
         topics: Vec<H256>,
     ) -> Result<Vec<Log>, EthClientError> {
         let filter = FilterBuilder::default()
-            .address(vec![self.zksync_contract_addr, self.governance_address])
+            .address(
+                [
+                    Some(self.diamond_proxy_addr),
+                    Some(self.governance_address),
+                    self.state_transition_manager_address,
+                ]
+                .into_iter()
+                .flatten()
+                .collect(),
+            )
             .from_block(from)
             .to_block(to)
             .topics(Some(topics), None, None, None)
             .build();
-        self.client.logs(filter, "watch").await
+        self.client.logs(filter).await
     }
 }
 
@@ -132,7 +147,7 @@ impl EthClient for EthHttpQueryClient {
                 };
                 let to_number = match to {
                     BlockNumber::Number(num) => num,
-                    BlockNumber::Latest => self.client.block_number("watch").await?,
+                    BlockNumber::Latest => self.client.block_number().await?,
                     _ => {
                         // invalid variant
                         return result;
@@ -169,12 +184,12 @@ impl EthClient for EthHttpQueryClient {
 
     async fn finalized_block_number(&self) -> Result<u64, EthClientError> {
         if let Some(confirmations) = self.confirmations_for_eth_event {
-            let latest_block_number = self.client.block_number("watch").await?.as_u64();
+            let latest_block_number = self.client.block_number().await?.as_u64();
             Ok(latest_block_number.saturating_sub(confirmations))
         } else {
             let block = self
                 .client
-                .block(BlockId::Number(BlockNumber::Finalized), "watch")
+                .block(BlockId::Number(BlockNumber::Finalized))
                 .await?
                 .ok_or_else(|| {
                     web3::Error::InvalidResponse("Finalized block must be present on L1".into())

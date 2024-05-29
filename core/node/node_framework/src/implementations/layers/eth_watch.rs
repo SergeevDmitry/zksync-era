@@ -7,7 +7,10 @@ use zksync_eth_watch::{EthHttpQueryClient, EthWatch};
 use zksync_types::{ethabi::Contract, Address};
 
 use crate::{
-    implementations::resources::{eth_interface::EthInterfaceResource, pools::MasterPoolResource},
+    implementations::resources::{
+        eth_interface::EthInterfaceResource,
+        pools::{MasterPool, PoolResource},
+    },
     service::{ServiceContext, StopReceiver},
     task::Task,
     wiring_layer::{WiringError, WiringLayer},
@@ -35,14 +38,23 @@ impl WiringLayer for EthWatchLayer {
     }
 
     async fn wire(self: Box<Self>, mut context: ServiceContext<'_>) -> Result<(), WiringError> {
-        let pool_resource = context.get_resource::<MasterPoolResource>().await?;
+        let pool_resource = context.get_resource::<PoolResource<MasterPool>>().await?;
         let main_pool = pool_resource.get().await.unwrap();
 
         let client = context.get_resource::<EthInterfaceResource>().await?.0;
 
+        let state_transition_manager_address = self
+            .contracts_config
+            .ecosystem_contracts
+            .as_ref()
+            .map(|a| a.state_transition_proxy_addr);
+
         let eth_client = EthHttpQueryClient::new(
             client,
             self.contracts_config.diamond_proxy_addr,
+            self.contracts_config
+                .ecosystem_contracts
+                .map(|a| a.transparent_proxy_admin_addr),
             self.contracts_config.governance_addr,
             self.eth_watch_config.confirmations_for_eth_event,
         );
@@ -50,6 +62,7 @@ impl WiringLayer for EthWatchLayer {
             main_pool,
             client: eth_client,
             governance_contract: governance_contract(),
+            state_transition_manager_address,
             diamond_proxy_address: self.contracts_config.diamond_proxy_addr,
             poll_interval: self.eth_watch_config.poll_interval(),
         }));
@@ -63,6 +76,7 @@ struct EthWatchTask {
     main_pool: ConnectionPool<Core>,
     client: EthHttpQueryClient,
     governance_contract: Contract,
+    state_transition_manager_address: Option<Address>,
     diamond_proxy_address: Address,
     poll_interval: Duration,
 }
@@ -76,6 +90,7 @@ impl Task for EthWatchTask {
     async fn run(self: Box<Self>, stop_receiver: StopReceiver) -> anyhow::Result<()> {
         let eth_watch = EthWatch::new(
             self.diamond_proxy_address,
+            self.state_transition_manager_address,
             &self.governance_contract,
             Box::new(self.client),
             self.main_pool,

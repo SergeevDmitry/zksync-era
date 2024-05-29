@@ -1,7 +1,10 @@
 use zksync_commitment_generator::CommitmentGenerator;
 
 use crate::{
-    implementations::resources::{healthcheck::AppHealthCheckResource, pools::MasterPoolResource},
+    implementations::resources::{
+        healthcheck::AppHealthCheckResource,
+        pools::{MasterPool, PoolResource},
+    },
     service::{ServiceContext, StopReceiver},
     task::Task,
     wiring_layer::{WiringError, WiringLayer},
@@ -16,13 +19,15 @@ impl WiringLayer for CommitmentGeneratorLayer {
     }
 
     async fn wire(self: Box<Self>, mut context: ServiceContext<'_>) -> Result<(), WiringError> {
-        let pool_resource = context.get_resource::<MasterPoolResource>().await?;
+        let pool_resource = context.get_resource::<PoolResource<MasterPool>>().await?;
         let main_pool = pool_resource.get().await.unwrap();
 
         let commitment_generator = CommitmentGenerator::new(main_pool);
 
         let AppHealthCheckResource(app_health) = context.get_resource_or_default().await;
-        app_health.insert_component(commitment_generator.health_check());
+        app_health
+            .insert_component(commitment_generator.health_check())
+            .map_err(WiringError::internal)?;
 
         context.add_task(Box::new(CommitmentGeneratorTask {
             commitment_generator,

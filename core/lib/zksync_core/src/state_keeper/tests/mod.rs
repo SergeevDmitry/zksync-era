@@ -36,7 +36,6 @@ use self::tester::{
 };
 pub(crate) use self::tester::{MockBatchExecutor, TestBatchExecutorBuilder};
 use crate::{
-    gas_tracker::l1_batch_base_cost,
     state_keeper::{
         batch_executor::TxExecutionResult,
         keeper::POLL_WAIT_DURATION,
@@ -46,6 +45,7 @@ use crate::{
         },
         types::ExecutionMetricsForCriteria,
         updates::UpdatesManager,
+        utils::l1_batch_base_cost,
         ZkSyncStateKeeper,
     },
     utils::testonly::create_l2_transaction,
@@ -101,7 +101,6 @@ pub(super) fn default_vm_batch_result() -> FinishedL1Batch {
         },
         final_execution_state: CurrentExecutionState {
             events: vec![],
-            storage_log_queries: vec![],
             deduplicated_storage_log_queries: vec![],
             used_contract_hashes: vec![],
             user_l2_to_l1_logs: vec![],
@@ -484,6 +483,7 @@ async fn load_upgrade_tx() {
 }
 
 /// Unconditionally seal the batch without triggering specific criteria.
+/// TODO(PLA-881): this test can be flaky if run under load.
 #[tokio::test]
 async fn unconditional_sealing() {
     // Trigger to know when to seal the batch.

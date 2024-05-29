@@ -17,7 +17,7 @@ pub use self::{
     keeper::ZkSyncStateKeeper,
     mempool_actor::MempoolFetcher,
     seal_criteria::SequencerSealer,
-    state_keeper_storage::{AsyncCatchupTask, AsyncRocksdbCache},
+    state_keeper_storage::AsyncRocksdbCache,
     types::MempoolGuard,
 };
 use crate::fee_model::BatchFeeModelInputProvider;
@@ -33,6 +33,7 @@ mod state_keeper_storage;
 pub(crate) mod tests;
 pub(crate) mod types;
 pub(crate) mod updates;
+pub(crate) mod utils;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_state_keeper(
