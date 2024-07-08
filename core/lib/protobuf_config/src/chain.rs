@@ -14,6 +14,8 @@ impl proto::Network {
             Network::Goerli => Self::Goerli,
             Network::Sepolia => Self::Sepolia,
             Network::Localhost => Self::Localhost,
+            Network::Stratis => Self::Stratis,
+            Network::Auroria => Self::Auroria,
             Network::Unknown => Self::Unknown,
             Network::Test => Self::Test,
         }
@@ -27,6 +29,8 @@ impl proto::Network {
             Self::Goerli => Network::Goerli,
             Self::Sepolia => Network::Sepolia,
             Self::Localhost => Network::Localhost,
+            Self::Stratis => Network::Stratis,
+            Self::Auroria => Network::Auroria,
             Self::Unknown => Network::Unknown,
             Self::Test => Network::Test,
         }
