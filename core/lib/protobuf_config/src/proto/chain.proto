@@ -11,6 +11,8 @@ enum Network {
   SEPOLIA = 5;
   LOCALHOST = 6;
   TEST = 7;
+  STRATIS = 8;
+  AURORIA = 9;
 }
 
 enum FeeModelVersion {
