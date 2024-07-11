@@ -14,10 +14,10 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # copy VK required for proof wrapping
-COPY --from=builder /usr/src/zksync/prover/vk_setup_data_generator_server_fri/data/ /prover/vk_setup_data_generator_server_fri/data/
+# COPY --from=builder /usr/src/zksync/prover/vk_setup_data_generator_server_fri/data/ /prover/vk_setup_data_generator_server_fri/data/
 
 # copy universal setup key required for proof compression
-COPY --from=builder /usr/src/zksync/setup_2\^26.key /setup_2\^26.key
+# COPY --from=builder /usr/src/zksync/setup_2\^26.key /setup_2\^26.key
 
 COPY --from=builder /usr/src/zksync/prover/target/release/zksync_proof_fri_compressor /usr/bin/
 
