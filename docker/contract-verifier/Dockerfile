@@ -79,7 +79,7 @@ RUN mkdir -p /etc/vyper-bin/0.3.10 \
   && mv vyper0.3.10 /etc/vyper-bin/0.3.10/vyper \
   && chmod +x /etc/vyper-bin/0.3.10/vyper
 
-# COPY --from=builder /usr/src/zksync/target/release/zksync_contract_verifier /usr/bin/
+COPY --from=builder /usr/src/zksync/target/release/zksync_contract_verifier /usr/bin/
 # COPY contracts/system-contracts/bootloader/build/artifacts/ /contracts/system-contracts/bootloader/build/artifacts/
 # COPY contracts/system-contracts/artifacts-zk /contracts/system-contracts/artifacts-zk
 

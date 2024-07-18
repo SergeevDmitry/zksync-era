@@ -19,6 +19,6 @@ RUN apt-get update && apt-get install -y curl libpq5 ca-certificates && rm -rf /
 # copy universal setup key required for proof compression
 # COPY setup_2\^26.key /setup_2\^26.key
 
-# COPY --from=builder /usr/src/zksync/prover/target/release/zksync_proof_fri_compressor /usr/bin/
+COPY --from=builder /usr/src/zksync/prover/target/release/zksync_proof_fri_compressor /usr/bin/
 
 ENTRYPOINT ["zksync_proof_fri_compressor"]
