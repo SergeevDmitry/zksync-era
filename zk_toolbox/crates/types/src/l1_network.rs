@@ -21,6 +21,8 @@ pub enum L1Network {
     #[default]
     Localhost,
     Sepolia,
+    Stratis,
+    Auroria,
     Mainnet,
 }
 
@@ -30,6 +32,8 @@ impl L1Network {
         match self {
             L1Network::Localhost => 9,
             L1Network::Sepolia => 11_155_111,
+            L1Network::Stratis => 105105,
+            L1Network::Auroria => 205205,
             L1Network::Mainnet => 1,
         }
     }

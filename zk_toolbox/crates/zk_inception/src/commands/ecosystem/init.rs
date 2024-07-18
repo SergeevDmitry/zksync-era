@@ -271,7 +271,7 @@ async fn deploy_ecosystem(
 
     let ecosystem_contracts_path =
         ecosystem_contracts_path.unwrap_or_else(|| match ecosystem_config.l1_network {
-            L1Network::Localhost => {
+            L1Network::Localhost | L1Network::Stratis | L1Network::Auroria => {
                 ContractsConfig::get_path_with_base_path(&ecosystem_config.config)
             }
             L1Network::Sepolia | L1Network::Mainnet => ecosystem_config
