@@ -16,7 +16,7 @@ use zk_evm_1_3_1::{
     },
 };
 use zksync_types::{
-    get_code_key, web3::signing::keccak256, AccountTreeId, Address, StorageKey,
+    get_code_key, web3::keccak256, AccountTreeId, Address, StorageKey,
     ACCOUNT_CODE_STORAGE_ADDRESS, BOOTLOADER_ADDRESS, CONTRACT_DEPLOYER_ADDRESS, H256,
     KECCAK256_PRECOMPILE_ADDRESS, KNOWN_CODES_STORAGE_ADDRESS, L1_MESSENGER_ADDRESS,
     L2_BASE_TOKEN_ADDRESS, MSG_VALUE_SIMULATOR_ADDRESS, SYSTEM_CONTEXT_ADDRESS, U256,
@@ -799,7 +799,7 @@ fn get_debug_log(state: &VmLocalStateData<'_>, memory: &SimpleMemory) -> String 
     let data = U256::from_big_endian(&data);
 
     // For long data, it is better to use hex-encoding for greater readability
-    let data_str = if data > U256::from(u64::max_value()) {
+    let data_str = if data > U256::from(u64::MAX) {
         let mut bytes = [0u8; 32];
         data.to_big_endian(&mut bytes);
         format!("0x{}", hex::encode(bytes))

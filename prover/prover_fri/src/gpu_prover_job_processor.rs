@@ -3,7 +3,6 @@ pub mod gpu_prover {
     use std::{collections::HashMap, sync::Arc, time::Instant};
 
     use anyhow::Context as _;
-    use prover_dal::{ConnectionPool, ProverDal};
     use shivini::{
         gpu_proof_config::GpuProofConfig, gpu_prove_from_external_witness_data, ProverContext,
     };
@@ -11,6 +10,7 @@ pub mod gpu_prover {
     use zksync_config::configs::{fri_prover_group::FriProverGroupConfig, FriProverConfig};
     use zksync_env_config::FromEnv;
     use zksync_object_store::ObjectStore;
+    use zksync_prover_dal::{ConnectionPool, ProverDal};
     use zksync_prover_fri_types::{
         circuit_definitions::{
             base_layer_proof_config,
@@ -29,7 +29,10 @@ pub mod gpu_prover {
         CircuitWrapper, FriProofWrapper, ProverServiceDataKey, WitnessVectorArtifacts,
     };
     use zksync_queued_job_processor::{async_trait, JobProcessor};
-    use zksync_types::{basic_fri_types::CircuitIdRoundTuple, prover_dal::SocketAddress};
+    use zksync_types::{
+        basic_fri_types::CircuitIdRoundTuple, protocol_version::ProtocolSemanticVersion,
+        prover_dal::SocketAddress,
+    };
     use zksync_vk_setup_data_server_fri::{keystore::Keystore, GoldilocksGpuProverSetupData};
 
     use crate::{
@@ -53,7 +56,7 @@ pub mod gpu_prover {
         blob_store: Arc<dyn ObjectStore>,
         public_blob_store: Option<Arc<dyn ObjectStore>>,
         config: Arc<FriProverConfig>,
-        prover_connection_pool: ConnectionPool<prover_dal::Prover>,
+        prover_connection_pool: ConnectionPool<zksync_prover_dal::Prover>,
         setup_load_mode: SetupLoadMode,
         // Only pick jobs for the configured circuit id and aggregation rounds.
         // Empty means all jobs are picked.
@@ -62,6 +65,7 @@ pub mod gpu_prover {
         prover_context: ProverContext,
         address: SocketAddress,
         zone: String,
+        protocol_version: ProtocolSemanticVersion,
     }
 
     impl Prover {
@@ -70,12 +74,13 @@ pub mod gpu_prover {
             blob_store: Arc<dyn ObjectStore>,
             public_blob_store: Option<Arc<dyn ObjectStore>>,
             config: FriProverConfig,
-            prover_connection_pool: ConnectionPool<prover_dal::Prover>,
+            prover_connection_pool: ConnectionPool<zksync_prover_dal::Prover>,
             setup_load_mode: SetupLoadMode,
             circuit_ids_for_round_to_be_proven: Vec<CircuitIdRoundTuple>,
             witness_vector_queue: SharedWitnessVectorQueue,
             address: SocketAddress,
             zone: String,
+            protocol_version: ProtocolSemanticVersion,
         ) -> Self {
             Prover {
                 blob_store,
@@ -89,6 +94,7 @@ pub mod gpu_prover {
                     .expect("failed initializing gpu prover context"),
                 address,
                 zone,
+                protocol_version,
             }
         }
 
@@ -287,6 +293,7 @@ pub mod gpu_prover {
                 self.public_blob_store.as_deref(),
                 self.config.shall_save_to_public_bucket,
                 &mut storage_processor,
+                self.protocol_version,
             )
             .await;
             Ok(())

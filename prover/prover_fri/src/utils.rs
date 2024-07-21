@@ -2,10 +2,10 @@
 
 use std::{sync::Arc, time::Instant};
 
-use prover_dal::{Connection, Prover, ProverDal};
 use tokio::sync::Mutex;
 use zkevm_test_harness::prover_utils::{verify_base_layer_proof, verify_recursion_layer_proof};
 use zksync_object_store::ObjectStore;
+use zksync_prover_dal::{Connection, Prover, ProverDal};
 use zksync_prover_fri_types::{
     circuit_definitions::{
         boojum::{
@@ -24,6 +24,7 @@ use zksync_prover_fri_types::{
 };
 use zksync_types::{
     basic_fri_types::{AggregationRound, CircuitIdRoundTuple},
+    protocol_version::ProtocolSemanticVersion,
     L1BatchNumber,
 };
 
@@ -55,6 +56,7 @@ pub struct GpuProverJob {
     pub witness_vector_artifacts: WitnessVectorArtifacts,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn save_proof(
     job_id: u32,
     started_at: Instant,
@@ -62,7 +64,8 @@ pub async fn save_proof(
     blob_store: &dyn ObjectStore,
     public_blob_store: Option<&dyn ObjectStore>,
     shall_save_to_public_bucket: bool,
-    storage_processor: &mut Connection<'_, Prover>,
+    connection: &mut Connection<'_, Prover>,
+    protocol_version: ProtocolSemanticVersion,
 ) {
     tracing::info!(
         "Successfully proven job: {}, total time taken: {:?}",
@@ -95,7 +98,7 @@ pub async fn save_proof(
 
     METRICS.blob_save_time[&circuit_type.to_string()].observe(blob_save_started_at.elapsed());
 
-    let mut transaction = storage_processor.start_transaction().await.unwrap();
+    let mut transaction = connection.start_transaction().await.unwrap();
     transaction
         .fri_prover_jobs_dal()
         .save_proof(job_id, started_at.elapsed(), &blob_url)
@@ -103,7 +106,7 @@ pub async fn save_proof(
     if is_scheduler_proof {
         transaction
             .fri_proof_compressor_dal()
-            .insert_proof_compression_job(artifacts.block_number, &blob_url)
+            .insert_proof_compression_job(artifacts.block_number, &blob_url, protocol_version)
             .await;
     }
     transaction.commit().await.unwrap();

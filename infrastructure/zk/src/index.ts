@@ -23,8 +23,6 @@ import { command as db } from './database';
 import { command as verifyUpgrade } from './verify-upgrade';
 import { proverCommand } from './prover_setup';
 import { command as status } from './status';
-import { command as spellcheck } from './spellcheck';
-import { command as linkcheck } from './linkcheck';
 import { command as setupEn } from './setup_en';
 import * as env from './env';
 
@@ -51,8 +49,6 @@ const COMMANDS = [
     proverCommand,
     env.command,
     status,
-    spellcheck,
-    linkcheck,
     setupEn,
     completion(program as Command)
 ];
@@ -62,7 +58,7 @@ async function main() {
     const ZKSYNC_HOME = process.env.ZKSYNC_HOME;
 
     if (!ZKSYNC_HOME) {
-        throw new Error('Please set $ZKSYNC_HOME to the root of zkSync repo!');
+        throw new Error('Please set $ZKSYNC_HOME to the root of ZKsync repo!');
     } else {
         process.chdir(ZKSYNC_HOME);
     }

@@ -6,7 +6,7 @@ use crate::sdk::{
     ethereum::ierc20_contract,
     operations::SyncTransactionHandle,
     wallet::Wallet,
-    web3::contract::tokens::Tokenize,
+    web3::contract::Tokenize,
     zksync_types::{transaction_request::PaymasterParams, Execute, L2TxCommonData},
     EthNamespaceClient, ZksNamespaceClient,
 };
@@ -155,7 +155,7 @@ where
             Execute {
                 contract_address: to,
                 calldata: Default::default(),
-                factory_deps: None,
+                factory_deps: vec![],
                 value: amount,
             }
         } else {
@@ -163,7 +163,7 @@ where
             Execute {
                 contract_address: token,
                 calldata: create_transfer_calldata(to, amount),
-                factory_deps: None,
+                factory_deps: vec![],
                 value: Default::default(),
             }
         };

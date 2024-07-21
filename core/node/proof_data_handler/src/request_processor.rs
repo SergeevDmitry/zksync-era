@@ -1,60 +1,33 @@
 use std::sync::Arc;
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
+use axum::{extract::Path, Json};
 use zksync_config::configs::ProofDataHandlerConfig;
-use zksync_dal::{ConnectionPool, Core, CoreDal, SqlxError};
-use zksync_object_store::{ObjectStore, ObjectStoreError};
-use zksync_prover_interface::api::{
-    ProofGenerationData, ProofGenerationDataRequest, ProofGenerationDataResponse,
-    SubmitProofRequest, SubmitProofResponse,
+use zksync_dal::{ConnectionPool, Core, CoreDal};
+use zksync_object_store::ObjectStore;
+use zksync_prover_interface::{
+    api::{
+        ProofGenerationData, ProofGenerationDataRequest, ProofGenerationDataResponse,
+        SubmitProofRequest, SubmitProofResponse,
+    },
+    inputs::{
+        L1BatchMetadataHashes, VMRunWitnessInputData, WitnessInputData, WitnessInputMerklePaths,
+    },
 };
 use zksync_types::{
-    basic_fri_types::Eip4844Blobs, commitment::serialize_commitments, web3::signing::keccak256,
+    basic_fri_types::Eip4844Blobs,
+    commitment::{serialize_commitments, L1BatchCommitmentMode},
+    web3::keccak256,
     L1BatchNumber, H256,
 };
+
+use crate::{errors::RequestProcessorError, metrics::METRICS};
 
 #[derive(Clone)]
 pub(crate) struct RequestProcessor {
     blob_store: Arc<dyn ObjectStore>,
     pool: ConnectionPool<Core>,
     config: ProofDataHandlerConfig,
-}
-
-pub(crate) enum RequestProcessorError {
-    ObjectStore(ObjectStoreError),
-    Sqlx(SqlxError),
-}
-
-impl IntoResponse for RequestProcessorError {
-    fn into_response(self) -> Response {
-        let (status_code, message) = match self {
-            RequestProcessorError::ObjectStore(err) => {
-                tracing::error!("GCS error: {:?}", err);
-                (
-                    StatusCode::BAD_GATEWAY,
-                    "Failed fetching/saving from GCS".to_owned(),
-                )
-            }
-            RequestProcessorError::Sqlx(err) => {
-                tracing::error!("Sqlx error: {:?}", err);
-                match err {
-                    SqlxError::RowNotFound => {
-                        (StatusCode::NOT_FOUND, "Non existing L1 batch".to_owned())
-                    }
-                    _ => (
-                        StatusCode::BAD_GATEWAY,
-                        "Failed fetching/saving from db".to_owned(),
-                    ),
-                }
-            }
-        };
-        (status_code, message).into_response()
-    }
+    commitment_mode: L1BatchCommitmentMode,
 }
 
 impl RequestProcessor {
@@ -62,11 +35,13 @@ impl RequestProcessor {
         blob_store: Arc<dyn ObjectStore>,
         pool: ConnectionPool<Core>,
         config: ProofDataHandlerConfig,
+        commitment_mode: L1BatchCommitmentMode,
     ) -> Self {
         Self {
             blob_store,
             pool,
             config,
+            commitment_mode,
         }
     }
 
@@ -83,18 +58,35 @@ impl RequestProcessor {
             .unwrap()
             .proof_generation_dal()
             .get_next_block_to_be_proven(self.config.proof_generation_timeout())
-            .await;
+            .await
+            .map_err(RequestProcessorError::Dal)?;
 
         let l1_batch_number = match l1_batch_number_result {
             Some(number) => number,
             None => return Ok(Json(ProofGenerationDataResponse::Success(None))), // no batches pending to be proven
         };
 
-        let blob = self
+        let vm_run_data: VMRunWitnessInputData = self
             .blob_store
             .get(l1_batch_number)
             .await
             .map_err(RequestProcessorError::ObjectStore)?;
+        let merkle_paths: WitnessInputMerklePaths = self
+            .blob_store
+            .get(l1_batch_number)
+            .await
+            .map_err(RequestProcessorError::ObjectStore)?;
+
+        let previous_batch_metadata = self
+            .pool
+            .connection()
+            .await
+            .unwrap()
+            .blocks_dal()
+            .get_l1_batch_metadata(L1BatchNumber(l1_batch_number.checked_sub(1).unwrap()))
+            .await
+            .unwrap()
+            .expect("No metadata for previous batch");
 
         let header = self
             .pool
@@ -105,44 +97,65 @@ impl RequestProcessor {
             .get_l1_batch_header(l1_batch_number)
             .await
             .unwrap()
-            .expect(&format!("Missing header for {}", l1_batch_number));
+            .unwrap_or_else(|| panic!("Missing header for {}", l1_batch_number));
 
-        let protocol_version_id = header.protocol_version.unwrap();
-        let l1_verifier_config = self
+        let minor_version = header.protocol_version.unwrap();
+        let protocol_version = self
             .pool
             .connection()
             .await
             .unwrap()
             .protocol_versions_dal()
-            .l1_verifier_config_for_version(protocol_version_id)
+            .get_protocol_version_with_latest_patch(minor_version)
             .await
-            .expect(&format!(
-                "Missing l1 verifier info for protocol version {protocol_version_id:?}",
-            ));
+            .unwrap()
+            .unwrap_or_else(|| {
+                panic!("Missing l1 verifier info for protocol version {minor_version}")
+            });
 
-        let storage_batch = self
+        let batch_header = self
             .pool
             .connection()
             .await
             .unwrap()
             .blocks_dal()
-            .get_storage_l1_batch(l1_batch_number)
+            .get_l1_batch_header(l1_batch_number)
             .await
             .unwrap()
             .unwrap();
 
-        let eip_4844_blobs = Eip4844Blobs::decode(&storage_batch.pubdata_input.expect(&format!(
-            "expected pubdata, but it is not available for batch {l1_batch_number:?}"
-        )))
-        .expect("failed to decode EIP-4844 blobs");
+        let eip_4844_blobs = match self.commitment_mode {
+            L1BatchCommitmentMode::Validium => Eip4844Blobs::empty(),
+            L1BatchCommitmentMode::Rollup => {
+                let blobs = batch_header.pubdata_input.as_deref().unwrap_or_else(|| {
+                    panic!(
+                        "expected pubdata, but it is not available for batch {l1_batch_number:?}"
+                    )
+                });
+                Eip4844Blobs::decode(blobs).expect("failed to decode EIP-4844 blobs")
+            }
+        };
+
+        let blob = WitnessInputData {
+            vm_run_data,
+            merkle_paths,
+            eip_4844_blobs,
+            previous_batch_metadata: L1BatchMetadataHashes {
+                root_hash: previous_batch_metadata.metadata.root_hash,
+                meta_hash: previous_batch_metadata.metadata.meta_parameters_hash,
+                aux_hash: previous_batch_metadata.metadata.aux_data_hash,
+            },
+        };
+
+        METRICS.observe_blob_sizes(&blob);
 
         let proof_gen_data = ProofGenerationData {
             l1_batch_number,
-            data: blob,
-            protocol_version_id,
-            l1_verifier_config,
-            eip_4844_blobs,
+            witness_input_data: blob,
+            protocol_version: protocol_version.version,
+            l1_verifier_config: protocol_version.l1_verifier_config,
         };
+
         Ok(Json(ProofGenerationDataResponse::Success(Some(Box::new(
             proof_gen_data,
         )))))
@@ -159,7 +172,7 @@ impl RequestProcessor {
             SubmitProofRequest::Proof(proof) => {
                 let blob_url = self
                     .blob_store
-                    .put(l1_batch_number, &*proof)
+                    .put((l1_batch_number, proof.protocol_version), &*proof)
                     .await
                     .map_err(RequestProcessorError::ObjectStore)?;
 
@@ -237,7 +250,7 @@ impl RequestProcessor {
                     .proof_generation_dal()
                     .save_proof_artifacts_metadata(l1_batch_number, &blob_url)
                     .await
-                    .map_err(RequestProcessorError::Sqlx)?;
+                    .map_err(RequestProcessorError::Dal)?;
             }
             SubmitProofRequest::SkippedProofGeneration => {
                 self.pool
@@ -247,7 +260,7 @@ impl RequestProcessor {
                     .proof_generation_dal()
                     .mark_proof_generation_job_as_skipped(l1_batch_number)
                     .await
-                    .map_err(RequestProcessorError::Sqlx)?;
+                    .map_err(RequestProcessorError::Dal)?;
             }
         }
 

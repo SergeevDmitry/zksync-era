@@ -6,10 +6,10 @@ use std::{
 
 use anyhow::Context as _;
 use async_trait::async_trait;
-use prover_dal::{ConnectionPool, Prover, ProverDal};
 use tokio::{task::JoinHandle, time::sleep};
 use zksync_config::configs::FriWitnessVectorGeneratorConfig;
 use zksync_object_store::ObjectStore;
+use zksync_prover_dal::{ConnectionPool, Prover, ProverDal};
 use zksync_prover_fri_types::{
     circuit_definitions::boojum::field::goldilocks::GoldilocksField, CircuitWrapper, ProverJob,
     WitnessVectorArtifacts,
@@ -19,7 +19,7 @@ use zksync_prover_fri_utils::{
 };
 use zksync_queued_job_processor::JobProcessor;
 use zksync_types::{
-    basic_fri_types::CircuitIdRoundTuple, protocol_version::L1VerifierConfig,
+    basic_fri_types::CircuitIdRoundTuple, protocol_version::ProtocolSemanticVersion,
     prover_dal::GpuProverInstanceStatus,
 };
 use zksync_vk_setup_data_server_fri::keystore::Keystore;
@@ -27,33 +27,37 @@ use zksync_vk_setup_data_server_fri::keystore::Keystore;
 use crate::metrics::METRICS;
 
 pub struct WitnessVectorGenerator {
-    blob_store: Arc<dyn ObjectStore>,
+    object_store: Arc<dyn ObjectStore>,
     pool: ConnectionPool<Prover>,
     circuit_ids_for_round_to_be_proven: Vec<CircuitIdRoundTuple>,
     zone: String,
     config: FriWitnessVectorGeneratorConfig,
-    vk_commitments: L1VerifierConfig,
+    protocol_version: ProtocolSemanticVersion,
     max_attempts: u32,
+    setup_data_path: Option<String>,
 }
 
 impl WitnessVectorGenerator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        blob_store: Arc<dyn ObjectStore>,
+        object_store: Arc<dyn ObjectStore>,
         prover_connection_pool: ConnectionPool<Prover>,
         circuit_ids_for_round_to_be_proven: Vec<CircuitIdRoundTuple>,
         zone: String,
         config: FriWitnessVectorGeneratorConfig,
-        vk_commitments: L1VerifierConfig,
+        protocol_version: ProtocolSemanticVersion,
         max_attempts: u32,
+        setup_data_path: Option<String>,
     ) -> Self {
         Self {
-            blob_store,
+            object_store,
             pool: prover_connection_pool,
             circuit_ids_for_round_to_be_proven,
             zone,
             config,
-            vk_commitments,
+            protocol_version,
             max_attempts,
+            setup_data_path,
         }
     }
 
@@ -89,9 +93,9 @@ impl JobProcessor for WitnessVectorGenerator {
         let mut storage = self.pool.connection().await.unwrap();
         let Some(job) = fetch_next_circuit(
             &mut storage,
-            &*self.blob_store,
+            &*self.object_store,
             &self.circuit_ids_for_round_to_be_proven,
-            &self.vk_commitments,
+            &self.protocol_version,
         )
         .await
         else {
@@ -116,10 +120,17 @@ impl JobProcessor for WitnessVectorGenerator {
         job: ProverJob,
         _started_at: Instant,
     ) -> JoinHandle<anyhow::Result<Self::JobArtifacts>> {
+        let setup_data_path = self.setup_data_path.clone();
+
         tokio::task::spawn_blocking(move || {
             let block_number = job.block_number;
             let _span = tracing::info_span!("witness_vector_generator", %block_number).entered();
-            Self::generate_witness_vector(job, &Keystore::default())
+            let keystore = if let Some(setup_data_path) = setup_data_path {
+                Keystore::new_with_setup_data_path(setup_data_path)
+            } else {
+                Keystore::default()
+            };
+            Self::generate_witness_vector(job, &keystore)
         })
     }
 
@@ -157,6 +168,7 @@ impl JobProcessor for WitnessVectorGenerator {
                     self.config.max_prover_reservation_duration(),
                     self.config.specialized_group_id,
                     self.zone.clone(),
+                    self.protocol_version,
                 )
                 .await;
 

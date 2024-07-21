@@ -3,14 +3,13 @@ use std::{sync::Arc, time::Instant};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use circuit_definitions::circuit_definitions::recursion_layer::base_circuit_type_into_recursive_leaf_circuit_type;
-use prover_dal::{Prover, ProverDal};
 use zkevm_test_harness::{
     witness::recursive_aggregation::{compute_leaf_params, create_leaf_witnesses},
     zkevm_circuits::scheduler::aux::BaseLayerCircuitType,
 };
 use zksync_config::configs::FriWitnessGeneratorConfig;
-use zksync_dal::ConnectionPool;
-use zksync_object_store::{ObjectStore, ObjectStoreFactory};
+use zksync_object_store::ObjectStore;
+use zksync_prover_dal::{ConnectionPool, Prover, ProverDal};
 use zksync_prover_fri_types::{
     circuit_definitions::{
         boojum::field::goldilocks::GoldilocksField,
@@ -31,7 +30,7 @@ use zksync_prover_fri_types::{
 use zksync_prover_fri_utils::get_recursive_layer_circuit_id_for_base_layer;
 use zksync_queued_job_processor::JobProcessor;
 use zksync_types::{
-    basic_fri_types::AggregationRound, protocol_version::ProtocolVersionId,
+    basic_fri_types::AggregationRound, protocol_version::ProtocolSemanticVersion,
     prover_dal::LeafAggregationJobMetadata, L1BatchNumber,
 };
 use zksync_vk_setup_data_server_fri::keystore::Keystore;
@@ -76,21 +75,21 @@ pub struct LeafAggregationWitnessGenerator {
     config: FriWitnessGeneratorConfig,
     object_store: Arc<dyn ObjectStore>,
     prover_connection_pool: ConnectionPool<Prover>,
-    protocol_versions: Vec<ProtocolVersionId>,
+    protocol_version: ProtocolSemanticVersion,
 }
 
 impl LeafAggregationWitnessGenerator {
-    pub async fn new(
+    pub fn new(
         config: FriWitnessGeneratorConfig,
-        store_factory: &ObjectStoreFactory,
+        object_store: Arc<dyn ObjectStore>,
         prover_connection_pool: ConnectionPool<Prover>,
-        protocol_versions: Vec<ProtocolVersionId>,
+        protocol_version: ProtocolSemanticVersion,
     ) -> Self {
         Self {
             config,
-            object_store: store_factory.create_store().await,
+            object_store,
             prover_connection_pool,
-            protocol_versions,
+            protocol_version,
         }
     }
 
@@ -121,7 +120,7 @@ impl JobProcessor for LeafAggregationWitnessGenerator {
         let pod_name = get_current_pod_name();
         let Some(metadata) = prover_connection
             .fri_witness_generator_dal()
-            .get_next_leaf_aggregation_job(&self.protocol_versions, &pod_name)
+            .get_next_leaf_aggregation_job(self.protocol_version, &pod_name)
             .await
         else {
             return Ok(None);

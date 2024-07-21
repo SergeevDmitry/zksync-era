@@ -15,7 +15,7 @@ use zk_evm_1_3_1::{
 use zksync_contracts::deployer_contract;
 use zksync_types::{
     ethabi::{Address, Token},
-    web3::signing::keccak256,
+    web3::keccak256,
     Execute, Nonce, StorageKey, StorageValue, CONTRACT_DEPLOYER_ADDRESS, H256, U256,
 };
 use zksync_utils::{
@@ -153,7 +153,7 @@ pub fn get_create_execute(code: &[u8], calldata: &[u8]) -> Execute {
     Execute {
         contract_address: CONTRACT_DEPLOYER_ADDRESS,
         calldata,
-        factory_deps: Some(vec![code.to_vec()]),
+        factory_deps: vec![code.to_vec()],
         value: U256::zero(),
     }
 }

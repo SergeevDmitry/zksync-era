@@ -3,15 +3,18 @@ pub mod gpu_socket_listener {
     use std::{net::SocketAddr, sync::Arc, time::Instant};
 
     use anyhow::Context as _;
-    use prover_dal::{ConnectionPool, Prover, ProverDal};
     use tokio::{
         io::copy,
         net::{TcpListener, TcpStream},
         sync::{watch, Notify},
     };
     use zksync_object_store::bincode;
+    use zksync_prover_dal::{ConnectionPool, Prover, ProverDal};
     use zksync_prover_fri_types::WitnessVectorArtifacts;
-    use zksync_types::prover_dal::{GpuProverInstanceStatus, SocketAddress};
+    use zksync_types::{
+        protocol_version::ProtocolSemanticVersion,
+        prover_dal::{GpuProverInstanceStatus, SocketAddress},
+    };
 
     use crate::{
         metrics::METRICS,
@@ -24,6 +27,7 @@ pub mod gpu_socket_listener {
         pool: ConnectionPool<Prover>,
         specialized_prover_group_id: u8,
         zone: String,
+        protocol_version: ProtocolSemanticVersion,
     }
 
     impl SocketListener {
@@ -33,6 +37,7 @@ pub mod gpu_socket_listener {
             pool: ConnectionPool<Prover>,
             specialized_prover_group_id: u8,
             zone: String,
+            protocol_version: ProtocolSemanticVersion,
         ) -> Self {
             Self {
                 address,
@@ -40,6 +45,7 @@ pub mod gpu_socket_listener {
                 pool,
                 specialized_prover_group_id,
                 zone,
+                protocol_version,
             }
         }
         async fn init(&self, init_notifier: Arc<Notify>) -> anyhow::Result<TcpListener> {
@@ -63,6 +69,7 @@ pub mod gpu_socket_listener {
                     self.address.clone(),
                     self.specialized_prover_group_id,
                     self.zone.clone(),
+                    self.protocol_version,
                 )
                 .await;
             init_notifier.notify_one();
@@ -78,7 +85,7 @@ pub mod gpu_socket_listener {
             let mut now = Instant::now();
             loop {
                 if *stop_receiver.borrow() {
-                    tracing::warn!("Stop signal received, shutting down socket listener");
+                    tracing::info!("Stop signal received, shutting down socket listener");
                     return Ok(());
                 }
                 let stream = listener
