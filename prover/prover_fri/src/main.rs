@@ -268,12 +268,8 @@ async fn get_prover_tasks(
         circuit_ids_for_round_to_be_proven.clone(),
         consumer,
         address.clone(),
-<<<<<<< HEAD
         zone.to_string(),
-=======
-        zone.clone(),
         protocol_version,
->>>>>>> main
     );
     let producer = shared_witness_vector_queue.clone();
 
@@ -287,12 +283,8 @@ async fn get_prover_tasks(
         producer,
         pool.clone(),
         prover_config.specialized_group_id,
-<<<<<<< HEAD
         zone.to_string(),
-=======
-        zone.clone(),
         protocol_version,
->>>>>>> main
     );
 
     let mut tasks = vec![
