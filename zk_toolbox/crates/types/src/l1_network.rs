@@ -21,6 +21,8 @@ pub enum L1Network {
     #[default]
     Localhost,
     Sepolia,
+    Stratis,
+    Auroria,
     Mainnet,
 }
 
