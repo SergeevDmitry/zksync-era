@@ -22,6 +22,14 @@ pub(crate) async fn run(shell: &Shell, args: InitContractVerifierArgs) -> anyhow
 
     download_binaries(
         shell,
+        args.zkvmsolc_releases,
+        get_solc_path,
+        &link_to_code,
+        "solc",
+    )?;
+
+    download_binaries(
+        shell,
         args.zkvyper_releases,
         get_zkvyper_path,
         &link_to_code,
