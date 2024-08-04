@@ -98,14 +98,14 @@ impl Network {
     /// Returns the network chain ID on the Ethereum side.
     pub fn chain_id(self) -> SLChainId {
         match self {
-            Self::Mainnet => L1ChainId(1),
-            Self::Ropsten => L1ChainId(3),
-            Self::Rinkeby => L1ChainId(4),
-            Self::Goerli => L1ChainId(5),
-            Self::Localhost => L1ChainId(9),
-            Self::Sepolia => L1ChainId(11155111),
-            Self::Stratis => L1ChainId(105105),
-            Self::Auroria => L1ChainId(205205),
+            Self::Mainnet => SLChainId(1),
+            Self::Ropsten => SLChainId(3),
+            Self::Rinkeby => SLChainId(4),
+            Self::Goerli => SLChainId(5),
+            Self::Localhost => SLChainId(9),
+            Self::Sepolia => SLChainId(11155111),
+            Self::Stratis => SLChainId(105105),
+            Self::Auroria => SLChainId(205205),
             Self::LocalhostL2 => SLChainId(270),
             Self::Unknown => panic!("Unknown chain ID"),
             Self::Test => panic!("Test chain ID"),
