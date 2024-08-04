@@ -8,7 +8,7 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 // Workspace uses
-use crate::L1ChainId;
+use crate::SLChainId;
 
 // Local uses
 
@@ -32,6 +32,8 @@ pub enum Network {
     Auroria,
     /// Self-hosted Ethereum network.
     Localhost,
+    /// Self-hosted L2 network.
+    LocalhostL2,
     /// Unknown network type.
     Unknown,
     /// Test network for testkit purposes
@@ -48,6 +50,7 @@ impl FromStr for Network {
             "ropsten" => Self::Ropsten,
             "goerli" => Self::Goerli,
             "localhost" => Self::Localhost,
+            "localhostL2" => Self::LocalhostL2,
             "stratis" => Self::Stratis,
             "auroria" => Self::Auroria,
             "sepolia" => Self::Sepolia,
@@ -65,6 +68,7 @@ impl fmt::Display for Network {
             Self::Ropsten => write!(f, "ropsten"),
             Self::Goerli => write!(f, "goerli"),
             Self::Localhost => write!(f, "localhost"),
+            Self::LocalhostL2 => write!(f, "localhostL2"),
             Self::Sepolia => write!(f, "sepolia"),
             Self::Stratis => write!(f, "stratis"),
             Self::Auroria => write!(f, "auroria"),
@@ -76,7 +80,7 @@ impl fmt::Display for Network {
 
 impl Network {
     /// Returns the network chain ID on the Ethereum side.
-    pub fn from_chain_id(chain_id: L1ChainId) -> Self {
+    pub fn from_chain_id(chain_id: SLChainId) -> Self {
         match *chain_id {
             1 => Self::Mainnet,
             3 => Self::Ropsten,
@@ -84,6 +88,7 @@ impl Network {
             5 => Self::Goerli,
             9 => Self::Localhost,
             11155111 => Self::Sepolia,
+            270 => Self::LocalhostL2,
             105105 => Self::Stratis,
             205205 => Self::Auroria,
             _ => Self::Unknown,
@@ -91,7 +96,7 @@ impl Network {
     }
 
     /// Returns the network chain ID on the Ethereum side.
-    pub fn chain_id(self) -> L1ChainId {
+    pub fn chain_id(self) -> SLChainId {
         match self {
             Self::Mainnet => L1ChainId(1),
             Self::Ropsten => L1ChainId(3),
@@ -101,6 +106,7 @@ impl Network {
             Self::Sepolia => L1ChainId(11155111),
             Self::Stratis => L1ChainId(105105),
             Self::Auroria => L1ChainId(205205),
+            Self::LocalhostL2 => SLChainId(270),
             Self::Unknown => panic!("Unknown chain ID"),
             Self::Test => panic!("Test chain ID"),
         }

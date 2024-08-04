@@ -6,10 +6,12 @@ use zksync_config::configs::consensus::{ValidatorPublicKey, WeightedValidator};
 use zksync_consensus_crypto::TextFmt as _;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
 use zksync_consensus_roles::{
-    validator,
+    attester, validator,
     validator::testonly::{Setup, SetupSpec},
 };
 use zksync_consensus_storage::BlockStore;
+use zksync_dal::consensus_dal::AttestationStatus;
+use zksync_node_sync::MainNodeClient;
 use zksync_types::{L1BatchNumber, ProtocolVersionId};
 
 use crate::{
@@ -120,17 +122,25 @@ async fn test_connection_get_batch(from_snapshot: bool, version: ProtocolVersion
         let batches = conn.batches_range(ctx).await?;
         let last = batches.last.expect("last is set");
         let (min, max) = conn
-            .get_l2_block_range_of_l1_batch(ctx, last.number)
+            .get_l2_block_range_of_l1_batch(ctx, last)
             .await?
             .unwrap();
 
+        let last_batch = conn
+            .get_batch(ctx, last)
+            .await?
+            .expect("last batch can be retrieved");
+
         assert_eq!(
-            last.payloads.len(),
+            last_batch.payloads.len(),
             (max.0 - min.0) as usize,
             "all block payloads present"
         );
 
-        let first_payload = last.payloads.first().expect("last batch has payloads");
+        let first_payload = last_batch
+            .payloads
+            .first()
+            .expect("last batch has payloads");
 
         let want_payload = conn.payload(ctx, min).await?.expect("payload is in the DB");
         let want_payload = want_payload.encode();
@@ -655,6 +665,78 @@ async fn test_centralized_fetcher(from_snapshot: bool, version: ProtocolVersionI
             .wait_for_payload(ctx, validator.last_block())
             .await?;
         assert_eq!(want, got);
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[test_casing(2, VERSIONS)]
+#[tokio::test]
+async fn test_attestation_status_api(version: ProtocolVersionId) {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    scope::run!(ctx, |ctx, s| async {
+        let pool = ConnectionPool::test(false, version).await;
+        let (mut sk, runner) = testonly::StateKeeper::new(ctx, pool.clone()).await?;
+        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("validator")));
+
+        // Setup nontrivial genesis.
+        while sk.last_sealed_batch() < L1BatchNumber(3) {
+            sk.push_random_blocks(rng, 10).await;
+        }
+        let mut setup = SetupSpec::new(rng, 3);
+        setup.first_block = sk.last_block();
+        let first_batch = sk.last_batch();
+        let setup = Setup::from(setup);
+        let mut conn = pool.connection(ctx).await.wrap("connection()")?;
+        conn.try_update_genesis(ctx, &setup.genesis)
+            .await
+            .wrap("try_update_genesis()")?;
+        // Make sure that the first_batch is actually sealed.
+        sk.seal_batch().await;
+        pool.wait_for_batch(ctx, first_batch).await?;
+
+        // Connect to API endpoint.
+        let api = sk.connect(ctx).await?;
+        let fetch_status = || async {
+            let s = api
+                .fetch_attestation_status()
+                .await?
+                .context("no attestation_status")?;
+            let s: AttestationStatus =
+                zksync_protobuf::serde::deserialize(&s.0).context("deserialize()")?;
+            anyhow::ensure!(s.genesis == setup.genesis.hash(), "genesis hash mismatch");
+            Ok(s)
+        };
+
+        // If the main node has no L1 batch certificates,
+        // then the first one to sign should be the batch with the `genesis.first_block`.
+        let status = fetch_status().await?;
+        assert_eq!(
+            status.next_batch_to_attest,
+            attester::BatchNumber(first_batch.0.into())
+        );
+
+        // Insert a (fake) cert, then check again.
+        {
+            let mut conn = pool.connection(ctx).await?;
+            let number = status.next_batch_to_attest;
+            let hash = conn.batch_hash(ctx, number).await?.unwrap();
+            let cert = attester::BatchQC {
+                signatures: attester::MultiSig::default(),
+                message: attester::Batch { number, hash },
+            };
+            conn.insert_batch_certificate(ctx, &cert)
+                .await
+                .context("insert_batch_certificate()")?;
+        }
+        let want = status.next_batch_to_attest.next();
+        let got = fetch_status().await?;
+        assert_eq!(want, got.next_batch_to_attest);
+
         Ok(())
     })
     .await
